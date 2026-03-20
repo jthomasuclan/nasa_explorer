@@ -17,7 +17,6 @@ void main() {
 class AppColors {
   static const Color deepSpace = Color(0xFF030B1A);
   static const Color spaceBlue = Color(0xFF0B1E3D);
-  static const Color nebulaPurple = Color(0xFF1A1040);
   static const Color cosmicBlue = Color(0xFF0B3D91);
   static const Color starWhite = Color(0xFFE8F0FE);
   static const Color moonGrey = Color(0xFF8A9BB5);
@@ -150,26 +149,44 @@ class NasaApp extends StatefulWidget {
 class _NasaAppState extends State<NasaApp> {
   bool _darkMode = true;
   bool _largeText = false;
+  // FIX: hapticFeedback lifted to app level so all screens can access it
+  bool _hapticFeedback = true;
 
   void updateDarkMode(bool val) => setState(() => _darkMode = val);
   void updateLargeText(bool val) => setState(() => _largeText = val);
+  void updateHapticFeedback(bool val) => setState(() => _hapticFeedback = val);
+
+  // FIX: global haptic helper used by all screens
+  static void triggerHaptic(bool hapticEnabled) {
+    if (hapticEnabled) HapticFeedback.lightImpact();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'NASA Explorer',
-      debugShowCheckedModeBanner: false,
-      theme: _buildTheme(_darkMode, _largeText),
-      home: MainScreen(
-        darkMode: _darkMode,
-        largeText: _largeText,
-        onDarkModeChanged: updateDarkMode,
-        onLargeTextChanged: updateLargeText,
+    return MediaQuery(
+      // FIX: large text uses textScaleFactor — affects ALL text including hardcoded sizes
+      data: MediaQuery.of(context).copyWith(
+        textScaler: _largeText
+            ? const TextScaler.linear(1.25)
+            : const TextScaler.linear(1.0),
+      ),
+      child: MaterialApp(
+        title: 'NASA Explorer',
+        debugShowCheckedModeBanner: false,
+        theme: _buildTheme(_darkMode),
+        home: MainScreen(
+          darkMode: _darkMode,
+          largeText: _largeText,
+          hapticFeedback: _hapticFeedback,
+          onDarkModeChanged: updateDarkMode,
+          onLargeTextChanged: updateLargeText,
+          onHapticFeedbackChanged: updateHapticFeedback,
+        ),
       ),
     );
   }
 
-  ThemeData _buildTheme(bool dark, bool largeText) {
+  ThemeData _buildTheme(bool dark) {
     return ThemeData(
       useMaterial3: true,
       brightness: dark ? Brightness.dark : Brightness.light,
@@ -205,13 +222,6 @@ class _NasaAppState extends State<NasaApp> {
         type: BottomNavigationBarType.fixed,
         elevation: 8,
       ),
-      textTheme: largeText
-          ? const TextTheme(
-              bodyMedium: TextStyle(fontSize: 17),
-              bodyLarge: TextStyle(fontSize: 19),
-              titleLarge: TextStyle(fontSize: 24),
-            )
-          : null,
       cardTheme: CardThemeData(
         color: dark ? AppColors.cardDark : Colors.white,
         elevation: 4,
@@ -243,15 +253,19 @@ class _NasaAppState extends State<NasaApp> {
 class MainScreen extends StatefulWidget {
   final bool darkMode;
   final bool largeText;
+  final bool hapticFeedback;
   final ValueChanged<bool> onDarkModeChanged;
   final ValueChanged<bool> onLargeTextChanged;
+  final ValueChanged<bool> onHapticFeedbackChanged;
 
   const MainScreen({
     super.key,
     required this.darkMode,
     required this.largeText,
+    required this.hapticFeedback,
     required this.onDarkModeChanged,
     required this.onLargeTextChanged,
+    required this.onHapticFeedbackChanged,
   });
 
   @override
@@ -264,13 +278,15 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     final screens = [
-      const HomeScreen(),
+      HomeScreen(hapticFeedback: widget.hapticFeedback),
       const FavouritesScreen(),
       SettingsScreen(
         darkMode: widget.darkMode,
         largeText: widget.largeText,
+        hapticFeedback: widget.hapticFeedback,
         onDarkModeChanged: widget.onDarkModeChanged,
         onLargeTextChanged: widget.onLargeTextChanged,
+        onHapticFeedbackChanged: widget.onHapticFeedbackChanged,
       ),
     ];
 
@@ -279,7 +295,8 @@ class _MainScreenState extends State<MainScreen> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) {
-          HapticFeedback.selectionClick();
+          // FIX: only trigger haptic if enabled
+          if (widget.hapticFeedback) HapticFeedback.selectionClick();
           setState(() => _currentIndex = index);
         },
         items: const [
@@ -309,7 +326,9 @@ class _MainScreenState extends State<MainScreen> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final bool hapticFeedback;
+
+  const HomeScreen({super.key, required this.hapticFeedback});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -362,7 +381,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _toggleFavourite() async {
     if (_apod == null) return;
-    HapticFeedback.lightImpact();
+    // FIX: use hapticFeedback setting
+    if (widget.hapticFeedback) HapticFeedback.lightImpact();
     if (_isFavourited) {
       await FavouritesService.removeFavourite(_apod!.date);
     } else {
@@ -467,7 +487,8 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.wifi_off_rounded, size: 64, color: AppColors.moonGrey),
+            const Icon(Icons.wifi_off_rounded,
+                size: 64, color: AppColors.moonGrey),
             const SizedBox(height: 20),
             const Text(
               'NO SIGNAL',
@@ -498,7 +519,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline_rounded,
+            const Icon(Icons.error_outline_rounded,
                 size: 64, color: AppColors.moonGrey),
             const SizedBox(height: 20),
             const Text(
@@ -527,8 +548,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(30),
           border: Border.all(color: AppColors.accent, width: 1.5),
@@ -557,7 +577,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Hero image
         Stack(
           children: [
             if (_apod!.mediaType == 'image')
@@ -606,7 +625,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
-            // Gradient overlay at bottom of image
             Positioned(
               bottom: 0,
               left: 0,
@@ -627,7 +645,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-            // Date badge
             Positioned(
               top: 16,
               left: 16,
@@ -660,14 +677,11 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
-
-        // Content card
         Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Title
               Text(
                 _apod!.title,
                 style: TextStyle(
@@ -678,11 +692,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-
-              // Action row
               Row(
                 children: [
-                  // Favourite button
                   GestureDetector(
                     onTap: _toggleFavourite,
                     child: Container(
@@ -713,8 +724,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-
-                  // Share button
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
@@ -730,11 +739,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const Spacer(),
-
-                  // View Details button
                   GestureDetector(
                     onTap: () {
-                      HapticFeedback.lightImpact();
+                      if (widget.hapticFeedback) HapticFeedback.lightImpact();
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -778,12 +785,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 20),
               Divider(color: AppColors.divider.withOpacity(0.5)),
               const SizedBox(height: 16),
-
-              // Description preview
               Text(
                 _apod!.explanation.length > 300
                     ? '${_apod!.explanation.substring(0, 300)}...'
@@ -858,8 +862,8 @@ class DetailScreen extends StatelessWidget {
                 : null,
             title: Text(
               apod.title,
-              style: const TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w700),
+              style:
+                  const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -906,9 +910,8 @@ class DetailScreen extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 15,
                       height: 1.8,
-                      color: isDark
-                          ? AppColors.moonGrey
-                          : Colors.grey[700],
+                      color:
+                          isDark ? AppColors.moonGrey : Colors.grey[700],
                     ),
                   ),
                   const SizedBox(height: 40),
@@ -979,8 +982,8 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
                     height: 100,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(
-                          color: AppColors.divider, width: 1.5),
+                      border:
+                          Border.all(color: AppColors.divider, width: 1.5),
                     ),
                     child: const Icon(Icons.favorite_outline_rounded,
                         size: 48, color: AppColors.moonGrey),
@@ -999,8 +1002,8 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
                   const SizedBox(height: 8),
                   const Text(
                     'Tap the heart on an image to save it here',
-                    style: TextStyle(
-                        color: AppColors.moonGrey, fontSize: 14),
+                    style:
+                        TextStyle(color: AppColors.moonGrey, fontSize: 14),
                   ),
                 ],
               ),
@@ -1013,8 +1016,7 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
                 return Container(
                   margin: const EdgeInsets.only(bottom: 12),
                   decoration: BoxDecoration(
-                    color:
-                        isDark ? AppColors.cardDark : Colors.white,
+                    color: isDark ? AppColors.cardDark : Colors.white,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                         color: AppColors.divider.withOpacity(0.5)),
@@ -1103,26 +1105,23 @@ class _FavouritesScreenState extends State<FavouritesScreen> {
 // SETTINGS SCREEN
 // ─────────────────────────────────────────────────────────────────────────────
 
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends StatelessWidget {
   final bool darkMode;
   final bool largeText;
+  final bool hapticFeedback;
   final ValueChanged<bool> onDarkModeChanged;
   final ValueChanged<bool> onLargeTextChanged;
+  final ValueChanged<bool> onHapticFeedbackChanged;
 
   const SettingsScreen({
     super.key,
     required this.darkMode,
     required this.largeText,
+    required this.hapticFeedback,
     required this.onDarkModeChanged,
     required this.onLargeTextChanged,
+    required this.onHapticFeedbackChanged,
   });
-
-  @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
-}
-
-class _SettingsScreenState extends State<SettingsScreen> {
-  bool _hapticFeedback = true;
 
   Widget _buildSectionLabel(String label) {
     return Padding(
@@ -1139,7 +1138,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildSettingsTile({
+  Widget _buildSettingsTile(
+    BuildContext context, {
     required IconData icon,
     required String title,
     required String subtitle,
@@ -1147,15 +1147,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required ValueChanged<bool> onChanged,
     Color iconColor = AppColors.accentGlow,
   }) {
-    final isDark =
-        Theme.of(context).brightness == Brightness.dark;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
         color: isDark ? AppColors.cardDark : Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border:
-            Border.all(color: AppColors.divider.withOpacity(0.4)),
+        border: Border.all(color: AppColors.divider.withOpacity(0.4)),
       ),
       child: SwitchListTile(
         secondary: Container(
@@ -1177,12 +1175,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         subtitle: Text(
           subtitle,
-          style: const TextStyle(
-              color: AppColors.moonGrey, fontSize: 12),
+          style:
+              const TextStyle(color: AppColors.moonGrey, fontSize: 12),
         ),
         value: value,
         onChanged: (val) {
-          if (_hapticFeedback) HapticFeedback.lightImpact();
+          // FIX: only trigger haptic if haptic is currently enabled
+          if (hapticFeedback) HapticFeedback.lightImpact();
           onChanged(val);
         },
         shape: RoundedRectangleBorder(
@@ -1204,33 +1203,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
         children: [
           _buildSectionLabel('APPEARANCE'),
           _buildSettingsTile(
+            context,
             icon: Icons.dark_mode_rounded,
             title: 'Dark Mode',
             subtitle: 'Switch to space-dark theme',
-            value: widget.darkMode,
-            onChanged: widget.onDarkModeChanged,
+            value: darkMode,
+            onChanged: onDarkModeChanged,
             iconColor: const Color(0xFF9575CD),
           ),
           _buildSettingsTile(
+            context,
             icon: Icons.text_fields_rounded,
             title: 'Large Text',
             subtitle: 'Increase text size for readability',
-            value: widget.largeText,
-            onChanged: widget.onLargeTextChanged,
+            value: largeText,
+            onChanged: onLargeTextChanged,
             iconColor: AppColors.accentGlow,
           ),
           _buildSectionLabel('INTERACTION'),
           _buildSettingsTile(
+            context,
             icon: Icons.vibration_rounded,
             title: 'Haptic Feedback',
             subtitle: 'Vibrate on interactions',
-            value: _hapticFeedback,
-            onChanged: (val) => setState(() => _hapticFeedback = val),
+            value: hapticFeedback,
+            onChanged: onHapticFeedbackChanged,
             iconColor: const Color(0xFF81C784),
           ),
           _buildSectionLabel('INFO'),
           Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            margin:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             decoration: BoxDecoration(
               color: isDark ? AppColors.cardDark : Colors.white,
               borderRadius: BorderRadius.circular(14),
@@ -1253,9 +1256,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
-                  color: isDark
-                      ? AppColors.starWhite
-                      : AppColors.spaceBlue,
+                  color:
+                      isDark ? AppColors.starWhite : AppColors.spaceBlue,
                 ),
               ),
               subtitle: const Text('About NASA Explorer',
@@ -1332,9 +1334,8 @@ class AboutScreen extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w800,
-                  color: isDark
-                      ? AppColors.starWhite
-                      : AppColors.spaceBlue,
+                  color:
+                      isDark ? AppColors.starWhite : AppColors.spaceBlue,
                 ),
               ),
             ),
@@ -1342,8 +1343,8 @@ class AboutScreen extends StatelessWidget {
             const Center(
               child: Text(
                 'Version 1.0.0',
-                style: TextStyle(
-                    color: AppColors.moonGrey, fontSize: 13),
+                style:
+                    TextStyle(color: AppColors.moonGrey, fontSize: 13),
               ),
             ),
             const SizedBox(height: 32),
@@ -1380,10 +1381,13 @@ class AboutScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildInfoCard(BuildContext context, bool isDark,
-      {required IconData icon,
-      required String title,
-      required String content}) {
+  Widget _buildInfoCard(
+    BuildContext context,
+    bool isDark, {
+    required IconData icon,
+    required String title,
+    required String content,
+  }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
