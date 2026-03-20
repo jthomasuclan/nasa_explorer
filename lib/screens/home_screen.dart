@@ -16,25 +16,48 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   ApodData? _apod;
   bool _isLoading = true;
   bool _hasError = false;
   bool _noConnection = false;
   bool _isFavourited = false;
+  DateTime _selectedDate = DateTime.now();
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeInOut,
+    );
     _loadData();
   }
 
-  Future<void> _loadData() async {
+  @override
+  void dispose() {
+    _fadeController.dispose();
+    super.dispose();
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _loadData({DateTime? date}) async {
     setState(() {
       _isLoading = true;
       _hasError = false;
       _noConnection = false;
     });
+    _fadeController.reset();
 
     final connectivity = await Connectivity().checkConnectivity();
     if (connectivity == ConnectivityResult.none) {
@@ -45,7 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final data = await NasaApiService.fetchApod();
+    final data = await NasaApiService.fetchApod(date: date ?? _selectedDate);
     if (data != null) {
       final fav = await FavouritesService.isFavourite(data.date);
       setState(() {
@@ -53,11 +76,40 @@ class _HomeScreenState extends State<HomeScreen> {
         _isFavourited = fav;
         _isLoading = false;
       });
+      _fadeController.forward();
     } else {
       setState(() {
         _isLoading = false;
         _hasError = true;
       });
+    }
+  }
+
+  Future<void> _pickDate() async {
+    if (widget.hapticFeedback) HapticFeedback.lightImpact();
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(1995, 6, 16),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.dark(
+              primary: AppColors.accent,
+              onPrimary: Colors.white,
+              surface: AppColors.cardDark,
+              onSurface: AppColors.starWhite,
+            ),
+            dialogBackgroundColor: AppColors.spaceBlue,
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() => _selectedDate = picked);
+      _loadData(date: picked);
     }
   }
 
@@ -77,39 +129,49 @@ class _HomeScreenState extends State<HomeScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            expandedHeight: 60,
-            floating: true,
-            snap: true,
-            backgroundColor: isDark ? AppColors.spaceBlue : AppColors.cosmicBlue,
-            title: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.auto_awesome, color: AppColors.accentGlow, size: 18),
-                const SizedBox(width: 8),
-                const Text(
-                  'NASA EXPLORER',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 2,
+      body: RefreshIndicator(
+        onRefresh: () => _loadData(),
+        color: AppColors.accentGlow,
+        backgroundColor: AppColors.spaceBlue,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverAppBar(
+              expandedHeight: 60,
+              floating: true,
+              snap: true,
+              backgroundColor:
+                  isDark ? AppColors.spaceBlue : AppColors.cosmicBlue,
+              title: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.auto_awesome,
+                      color: AppColors.accentGlow, size: 18),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'NASA EXPLORER',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2,
+                    ),
                   ),
+                ],
+              ),
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+                  onPressed: () => _loadData(),
                 ),
               ],
             ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.refresh_rounded, color: Colors.white),
-                onPressed: _loadData,
-              ),
-            ],
-          ),
-          SliverToBoxAdapter(child: _buildBody(isDark)),
-        ],
+            SliverToBoxAdapter(
+              child: _buildBody(isDark),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -119,7 +181,10 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_isLoading) return _buildLoading();
     if (_hasError) return _buildError();
     if (_apod == null) return const SizedBox.shrink();
-    return _buildContent(isDark);
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: _buildContent(isDark),
+    );
   }
 
   Widget _buildLoading() {
@@ -166,7 +231,8 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.wifi_off_rounded, size: 64, color: AppColors.moonGrey),
+            const Icon(Icons.wifi_off_rounded,
+                size: 64, color: AppColors.moonGrey),
             const SizedBox(height: 20),
             const Text(
               'NO SIGNAL',
@@ -183,7 +249,7 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(color: AppColors.moonGrey, fontSize: 14),
             ),
             const SizedBox(height: 32),
-            _buildGlowButton('RETRY', _loadData),
+            _buildGlowButton('RETRY', () => _loadData()),
           ],
         ),
       ),
@@ -197,7 +263,8 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.error_outline_rounded, size: 64, color: AppColors.moonGrey),
+            const Icon(Icons.error_outline_rounded,
+                size: 64, color: AppColors.moonGrey),
             const SizedBox(height: 20),
             const Text(
               'TRANSMISSION FAILED',
@@ -214,7 +281,7 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(color: AppColors.moonGrey, fontSize: 14),
             ),
             const SizedBox(height: 32),
-            _buildGlowButton('RETRY', _loadData),
+            _buildGlowButton('RETRY', () => _loadData()),
           ],
         ),
       ),
@@ -254,108 +321,104 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Stack(
-          children: [
-            if (_apod!.mediaType == 'image')
-              Image.network(
-                _apod!.url,
-                width: double.infinity,
-                height: 300,
-                fit: BoxFit.cover,
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
-                  return Container(
-                    width: double.infinity,
-                    height: 300,
-                    color: AppColors.spaceBlue,
-                    child: const Center(
-                      child: CircularProgressIndicator(
-                          color: AppColors.accentGlow, strokeWidth: 2),
-                    ),
-                  );
-                },
-                errorBuilder: (_, __, ___) => Container(
+        // Image
+        if (_apod!.mediaType == 'image')
+          Hero(
+            tag: 'apod_image_${_apod!.date}',
+            child: Image.network(
+              _apod!.url,
+              width: double.infinity,
+              height: 280,
+              fit: BoxFit.cover,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return Container(
                   width: double.infinity,
-                  height: 300,
+                  height: 280,
                   color: AppColors.spaceBlue,
                   child: const Center(
-                    child: Icon(Icons.broken_image_outlined,
-                        size: 60, color: AppColors.moonGrey),
+                    child: CircularProgressIndicator(
+                        color: AppColors.accentGlow, strokeWidth: 2),
                   ),
-                ),
-              )
-            else
-              Container(
+                );
+              },
+              errorBuilder: (_, __, ___) => Container(
                 width: double.infinity,
-                height: 300,
+                height: 280,
                 color: AppColors.spaceBlue,
                 child: const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.play_circle_outline,
-                          size: 64, color: AppColors.accentGlow),
-                      SizedBox(height: 8),
-                      Text("Today's content is a video",
-                          style: TextStyle(color: AppColors.moonGrey)),
-                    ],
-                  ),
-                ),
-              ),
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: Container(
-                height: 100,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      isDark ? AppColors.deepSpace : const Color(0xFFF0F4FF),
-                    ],
-                  ),
+                  child: Icon(Icons.broken_image_outlined,
+                      size: 60, color: AppColors.moonGrey),
                 ),
               ),
             ),
-            Positioned(
-              top: 16,
-              left: 16,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.deepSpace.withOpacity(0.7),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                      color: AppColors.accent.withOpacity(0.5), width: 1),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.calendar_today_outlined,
-                        size: 12, color: AppColors.accentGlow),
-                    const SizedBox(width: 6),
-                    Text(
-                      _apod!.date,
-                      style: const TextStyle(
-                        color: AppColors.starWhite,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
+          )
+        else
+          Container(
+            width: double.infinity,
+            height: 280,
+            color: AppColors.spaceBlue,
+            child: const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.play_circle_outline,
+                      size: 64, color: AppColors.accentGlow),
+                  SizedBox(height: 8),
+                  Text("Today's content is a video",
+                      style: TextStyle(color: AppColors.moonGrey)),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+
+        // Content below image
         Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // DATE PICKER BUTTON — moved OUT of Stack, fully tappable
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _pickDate,
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                          color: AppColors.accent.withOpacity(0.5), width: 1),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.calendar_month_rounded,
+                            size: 14, color: AppColors.accentGlow),
+                        const SizedBox(width: 6),
+                        Text(
+                          _apod!.date,
+                          style: const TextStyle(
+                            color: AppColors.accentGlow,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.expand_more_rounded,
+                            size: 16, color: AppColors.accentGlow),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // Title
               Text(
                 _apod!.title,
                 style: TextStyle(
@@ -366,19 +429,26 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+
+              // Action row
               Row(
                 children: [
                   GestureDetector(
                     onTap: _toggleFavourite,
-                    child: Container(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: _isFavourited
                             ? AppColors.red.withOpacity(0.15)
-                            : (isDark ? AppColors.cardDark : Colors.grey[100]),
+                            : (isDark
+                                ? AppColors.cardDark
+                                : Colors.grey[100]),
                         border: Border.all(
-                          color: _isFavourited ? AppColors.red : AppColors.divider,
+                          color: _isFavourited
+                              ? AppColors.red
+                              : AppColors.divider,
                           width: 1.5,
                         ),
                       ),
@@ -386,7 +456,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         _isFavourited
                             ? Icons.favorite_rounded
                             : Icons.favorite_outline_rounded,
-                        color: _isFavourited ? AppColors.red : AppColors.moonGrey,
+                        color: _isFavourited
+                            ? AppColors.red
+                            : AppColors.moonGrey,
                         size: 22,
                       ),
                     ),
@@ -397,7 +469,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: isDark ? AppColors.cardDark : Colors.grey[100],
-                      border: Border.all(color: AppColors.divider, width: 1.5),
+                      border: Border.all(
+                          color: AppColors.divider, width: 1.5),
                     ),
                     child: const Icon(
                       Icons.share_outlined,
@@ -411,8 +484,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       if (widget.hapticFeedback) HapticFeedback.lightImpact();
                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => DetailScreen(apod: _apod!),
+                        PageRouteBuilder(
+                          pageBuilder: (_, animation, __) =>
+                              DetailScreen(apod: _apod!),
+                          transitionsBuilder: (_, animation, __, child) =>
+                              FadeTransition(
+                                  opacity: animation, child: child),
+                          transitionDuration:
+                              const Duration(milliseconds: 400),
                         ),
                       );
                     },
@@ -452,9 +531,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
+
               const SizedBox(height: 20),
               Divider(color: AppColors.divider.withOpacity(0.5)),
               const SizedBox(height: 16),
+
               Text(
                 _apod!.explanation.length > 300
                     ? '${_apod!.explanation.substring(0, 300)}...'
@@ -470,8 +551,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => DetailScreen(apod: _apod!),
+                    PageRouteBuilder(
+                      pageBuilder: (_, animation, __) =>
+                          DetailScreen(apod: _apod!),
+                      transitionsBuilder: (_, animation, __, child) =>
+                          FadeTransition(opacity: animation, child: child),
+                      transitionDuration:
+                          const Duration(milliseconds: 400),
                     ),
                   );
                 },
