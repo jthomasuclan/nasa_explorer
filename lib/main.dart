@@ -7,6 +7,7 @@ import 'theme/app_colors.dart';
 import 'screens/home_screen.dart';
 import 'screens/favourites_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/account_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -155,6 +156,7 @@ class _MainScreenState extends State<MainScreen> {
         onLargeTextChanged: widget.onLargeTextChanged,
         onHapticFeedbackChanged: widget.onHapticFeedbackChanged,
       ),
+      const AccountScreen(),
     ];
 
     return Scaffold(
@@ -180,6 +182,11 @@ class _MainScreenState extends State<MainScreen> {
             icon: Icon(Icons.tune_outlined),
             activeIcon: Icon(Icons.tune),
             label: 'Settings',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            activeIcon: Icon(Icons.person),
+            label: 'Account',
           ),
         ],
       ),

@@ -27,6 +27,8 @@ class _HomeScreenState extends State<HomeScreen>
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
+  final DateTime _firstDate = DateTime(1995, 6, 16);
+
   @override
   void initState() {
     super.initState();
@@ -47,11 +49,14 @@ class _HomeScreenState extends State<HomeScreen>
     super.dispose();
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-  }
+  bool get _canGoNext =>
+      _selectedDate.isBefore(DateTime.now().subtract(const Duration(days: 1)));
+
+  bool get _canGoPrevious => _selectedDate.isAfter(_firstDate);
 
   Future<void> _loadData({DateTime? date}) async {
+    if (!mounted) return;
+
     setState(() {
       _isLoading = true;
       _hasError = false;
@@ -60,6 +65,9 @@ class _HomeScreenState extends State<HomeScreen>
     _fadeController.reset();
 
     final connectivity = await Connectivity().checkConnectivity();
+
+    if (!mounted) return;
+
     if (connectivity == ConnectivityResult.none) {
       setState(() {
         _isLoading = false;
@@ -69,8 +77,14 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     final data = await NasaApiService.fetchApod(date: date ?? _selectedDate);
+
+    if (!mounted) return;
+
     if (data != null) {
       final fav = await FavouritesService.isFavourite(data.date);
+
+      if (!mounted) return;
+
       setState(() {
         _apod = data;
         _isFavourited = fav;
@@ -85,12 +99,28 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  void _goToPreviousDay() {
+    if (!_canGoPrevious) return;
+    if (widget.hapticFeedback) HapticFeedback.lightImpact();
+    final newDate = _selectedDate.subtract(const Duration(days: 1));
+    setState(() => _selectedDate = newDate);
+    _loadData(date: newDate);
+  }
+
+  void _goToNextDay() {
+    if (!_canGoNext) return;
+    if (widget.hapticFeedback) HapticFeedback.lightImpact();
+    final newDate = _selectedDate.add(const Duration(days: 1));
+    setState(() => _selectedDate = newDate);
+    _loadData(date: newDate);
+  }
+
   Future<void> _pickDate() async {
     if (widget.hapticFeedback) HapticFeedback.lightImpact();
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
-      firstDate: DateTime(1995, 6, 16),
+      firstDate: _firstDate,
       lastDate: DateTime.now(),
       builder: (context, child) {
         return Theme(
@@ -142,14 +172,11 @@ class _HomeScreenState extends State<HomeScreen>
               snap: true,
               backgroundColor:
                   isDark ? AppColors.spaceBlue : AppColors.cosmicBlue,
-              title: Row(
+              title: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.auto_awesome,
-                      color: AppColors.accentGlow, size: 18),
-                  const SizedBox(width: 8),
-                  const Text(
+                  Text(
                     'NASA EXPLORER',
                     style: TextStyle(
                       color: Colors.white,
@@ -247,6 +274,7 @@ class _HomeScreenState extends State<HomeScreen>
             const Text(
               'Check your connection and try again',
               style: TextStyle(color: AppColors.moonGrey, fontSize: 14),
+              textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
             _buildGlowButton('RETRY', () => _loadData()),
@@ -321,34 +349,46 @@ class _HomeScreenState extends State<HomeScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Image
         if (_apod!.mediaType == 'image')
-          Hero(
-            tag: 'apod_image_${_apod!.date}',
-            child: Image.network(
-              _apod!.url,
-              width: double.infinity,
-              height: 280,
-              fit: BoxFit.cover,
-              loadingBuilder: (context, child, progress) {
-                if (progress == null) return child;
-                return Container(
+          GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => _ZoomImageScreen(
+                    imageUrl: _apod!.url,
+                    tag: 'apod_image_${_apod!.date}',
+                  ),
+                ),
+              );
+            },
+            child: Hero(
+              tag: 'apod_image_${_apod!.date}',
+              child: Image.network(
+                _apod!.url,
+                width: double.infinity,
+                height: 280,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return Container(
+                    width: double.infinity,
+                    height: 280,
+                    color: AppColors.spaceBlue,
+                    child: const Center(
+                      child: CircularProgressIndicator(
+                          color: AppColors.accentGlow, strokeWidth: 2),
+                    ),
+                  );
+                },
+                errorBuilder: (_, __, ___) => Container(
                   width: double.infinity,
                   height: 280,
                   color: AppColors.spaceBlue,
                   child: const Center(
-                    child: CircularProgressIndicator(
-                        color: AppColors.accentGlow, strokeWidth: 2),
+                    child: Icon(Icons.broken_image_outlined,
+                        size: 60, color: AppColors.moonGrey),
                   ),
-                );
-              },
-              errorBuilder: (_, __, ___) => Container(
-                width: double.infinity,
-                height: 280,
-                color: AppColors.spaceBlue,
-                child: const Center(
-                  child: Icon(Icons.broken_image_outlined,
-                      size: 60, color: AppColors.moonGrey),
                 ),
               ),
             ),
@@ -372,53 +412,106 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
 
-        // Content below image
         Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // DATE PICKER BUTTON — moved OUT of Stack, fully tappable
-              Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: _pickDate,
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.accent.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                          color: AppColors.accent.withOpacity(0.5), width: 1),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.calendar_month_rounded,
-                            size: 14, color: AppColors.accentGlow),
-                        const SizedBox(width: 6),
-                        Text(
-                          _apod!.date,
-                          style: const TextStyle(
-                            color: AppColors.accentGlow,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  GestureDetector(
+                    onTap: _canGoPrevious ? _goToPreviousDay : null,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _canGoPrevious
+                            ? AppColors.accent.withOpacity(0.1)
+                            : Colors.transparent,
+                        border: Border.all(
+                          color: _canGoPrevious
+                              ? AppColors.accent.withOpacity(0.5)
+                              : AppColors.divider.withOpacity(0.3),
+                          width: 1,
                         ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.expand_more_rounded,
-                            size: 16, color: AppColors.accentGlow),
-                      ],
+                      ),
+                      child: Icon(
+                        Icons.chevron_left_rounded,
+                        color: _canGoPrevious
+                            ? AppColors.accentGlow
+                            : AppColors.divider,
+                        size: 22,
+                      ),
                     ),
                   ),
-                ),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _pickDate,
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                              color: AppColors.accent.withOpacity(0.5),
+                              width: 1),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.calendar_month_rounded,
+                                size: 14, color: AppColors.accentGlow),
+                            const SizedBox(width: 6),
+                            Text(
+                              _apod!.date,
+                              style: const TextStyle(
+                                color: AppColors.accentGlow,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            const Icon(Icons.expand_more_rounded,
+                                size: 16, color: AppColors.accentGlow),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: _canGoNext ? _goToNextDay : null,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _canGoNext
+                            ? AppColors.accent.withOpacity(0.1)
+                            : Colors.transparent,
+                        border: Border.all(
+                          color: _canGoNext
+                              ? AppColors.accent.withOpacity(0.5)
+                              : AppColors.divider.withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.chevron_right_rounded,
+                        color: _canGoNext
+                            ? AppColors.accentGlow
+                            : AppColors.divider,
+                        size: 22,
+                      ),
+                    ),
+                  ),
+                ],
               ),
 
               const SizedBox(height: 12),
 
-              // Title
               Text(
                 _apod!.title,
                 style: TextStyle(
@@ -430,7 +523,6 @@ class _HomeScreenState extends State<HomeScreen>
               ),
               const SizedBox(height: 16),
 
-              // Action row
               Row(
                 children: [
                   GestureDetector(
@@ -469,8 +561,8 @@ class _HomeScreenState extends State<HomeScreen>
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: isDark ? AppColors.cardDark : Colors.grey[100],
-                      border: Border.all(
-                          color: AppColors.divider, width: 1.5),
+                      border:
+                          Border.all(color: AppColors.divider, width: 1.5),
                     ),
                     child: const Icon(
                       Icons.share_outlined,
@@ -575,6 +667,35 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ZoomImageScreen extends StatelessWidget {
+  final String imageUrl;
+  final String tag;
+
+  const _ZoomImageScreen({required this.imageUrl, required this.tag});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          panEnabled: true,
+          minScale: 1.0,
+          maxScale: 5.0,
+          child: Hero(
+            tag: tag,
+            child: Image.network(imageUrl),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -54,7 +54,7 @@ class AboutScreen extends StatelessWidget {
             const SizedBox(height: 4),
             const Center(
               child: Text(
-                'Version 1.0.0',
+                'Version 2.5.0',
                 style: TextStyle(color: AppColors.moonGrey, fontSize: 13),
               ),
             ),
@@ -75,15 +75,6 @@ class AboutScreen extends StatelessWidget {
               title: 'Data Source',
               content:
                   'All images and data are sourced from NASA\'s APOD API at api.nasa.gov. Data is free to use under NASA\'s open data policy.',
-            ),
-            const SizedBox(height: 16),
-            _buildInfoCard(
-              context,
-              isDark,
-              icon: Icons.school_rounded,
-              title: 'Academic',
-              content:
-                  'Built for CO2404 Cross Platform Development at the University of Central Lancashire.',
             ),
             const SizedBox(height: 40),
           ],

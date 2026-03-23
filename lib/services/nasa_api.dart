@@ -13,15 +13,34 @@ class NasaApiService {
 
   static Future<ApodData?> fetchApod({DateTime? date}) async {
     try {
-      final dateParam = date != null ? '&date=${_formatDate(date)}' : '';
-      final uri = Uri.parse('$_baseUrl?api_key=$_apiKey$dateParam');
-      developer.log('Fetching APOD: $uri', name: 'NasaApiService');
-      final response = await http.get(uri).timeout(const Duration(seconds: 10));
-      developer.log('Status: ${response.statusCode}', name: 'NasaApiService');
-      if (response.statusCode == 200) {
-        final json = jsonDecode(response.body);
-        return ApodData.fromJson(json);
+      final nasaToday =
+          DateTime.now().toUtc().subtract(const Duration(hours: 5));
+
+      // Always try the requested date first, then fall back to previous day
+      final fetchDate = date ?? nasaToday;
+      final datesToTry = [
+        fetchDate,
+        fetchDate.subtract(const Duration(days: 1)),
+      ];
+
+      for (final d in datesToTry) {
+        final uri = Uri.parse(
+            '$_baseUrl?api_key=$_apiKey&date=${_formatDate(d)}');
+        developer.log('Fetching APOD: $uri', name: 'NasaApiService');
+
+        final response =
+            await http.get(uri).timeout(const Duration(seconds: 10));
+        developer.log('Status: ${response.statusCode}', name: 'NasaApiService');
+
+        if (response.statusCode == 200) {
+          final json = jsonDecode(response.body);
+          return ApodData.fromJson(json);
+        }
+
+        developer.log('Got ${response.statusCode}, trying previous day...',
+            name: 'NasaApiService');
       }
+
       return null;
     } catch (e) {
       developer.log('Network error: $e', name: 'NasaApiService');
