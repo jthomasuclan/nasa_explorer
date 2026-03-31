@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:connectivity_plus/connectivity_plus.dart'; // connectivity_plus package to check internet connection
 import '../models/apod_data.dart';
 import '../services/nasa_api.dart';
 import '../services/favourites_service.dart';
 import '../theme/app_colors.dart';
 import 'detail_screen.dart';
 
-class HomeScreen extends StatefulWidget {
+class HomeScreen extends StatefulWidget { // StatefulWidget because screen has lots of changing data
   final bool hapticFeedback;
 
   const HomeScreen({super.key, required this.hapticFeedback});
@@ -17,58 +17,57 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
-  ApodData? _apod;
-  bool _isLoading = true;
+    with SingleTickerProviderStateMixin { 
+  ApodData? _apod; //  holds the NASA picture data, null until loaded
+  bool _isLoading = true; 
   bool _hasError = false;
   bool _noConnection = false;
   bool _isFavourited = false;
   DateTime _selectedDate = DateTime.now();
-  late AnimationController _fadeController;
+  late AnimationController _fadeController; 
   late Animation<double> _fadeAnimation;
 
-  final DateTime _firstDate = DateTime(1995, 6, 16);
+  final DateTime _firstDate = DateTime(1995, 6, 16); 
 
   @override
-  void initState() {
+  void initState() { 
     super.initState();
     _fadeController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 600), 
     );
     _fadeAnimation = CurvedAnimation(
       parent: _fadeController,
-      curve: Curves.easeInOut,
+      curve: Curves.easeInOut, //  smooth ease in and out curve
     );
-    _loadData();
+    _loadData(); //  fetch NASA data as soon as screen loads
   }
 
   @override
   void dispose() {
-    _fadeController.dispose();
+    _fadeController.dispose(); 
     super.dispose();
   }
 
   bool get _canGoNext =>
-      _selectedDate.isBefore(DateTime.now().subtract(const Duration(days: 1)));
+      _selectedDate.isBefore(DateTime.now().subtract(const Duration(days: 1))); 
 
-  bool get _canGoPrevious => _selectedDate.isAfter(_firstDate);
+  bool get _canGoPrevious => _selectedDate.isAfter(_firstDate); 
 
-  Future<void> _loadData({DateTime? date}) async {
-    if (!mounted) return;
-
-    setState(() {
+  Future<void> _loadData({DateTime? date}) async { 
+    if (!mounted) return; 
+    setState(() { 
       _isLoading = true;
       _hasError = false;
       _noConnection = false;
     });
     _fadeController.reset();
 
-    final connectivity = await Connectivity().checkConnectivity();
+    final connectivity = await Connectivity().checkConnectivity(); //  check internet BEFORE calling API
 
     if (!mounted) return;
 
-    if (connectivity == ConnectivityResult.none) {
+    if (connectivity == ConnectivityResult.none) { //  no internet - show no connection screen
       setState(() {
         _isLoading = false;
         _noConnection = true;
@@ -76,32 +75,32 @@ class _HomeScreenState extends State<HomeScreen>
       return;
     }
 
-    final data = await NasaApiService.fetchApod(date: date ?? _selectedDate);
+    final data = await NasaApiService.fetchApod(date: date ?? _selectedDate); //  call NASA API
 
     if (!mounted) return;
 
-    if (data != null) {
-      final fav = await FavouritesService.isFavourite(data.date);
+    if (data != null) { //  API returned data successfully
+      final fav = await FavouritesService.isFavourite(data.date); 
 
       if (!mounted) return;
 
       setState(() {
-        _apod = data;
+        _apod = data; //  store the NASA data
         _isFavourited = fav;
         _isLoading = false;
       });
-      _fadeController.forward();
+      _fadeController.forward(); 
     } else {
       setState(() {
         _isLoading = false;
-        _hasError = true;
+        _hasError = true; 
       });
     }
   }
 
   void _goToPreviousDay() {
     if (!_canGoPrevious) return;
-    if (widget.hapticFeedback) HapticFeedback.lightImpact();
+    if (widget.hapticFeedback) HapticFeedback.lightImpact(); 
     final newDate = _selectedDate.subtract(const Duration(days: 1));
     setState(() => _selectedDate = newDate);
     _loadData(date: newDate);
@@ -117,10 +116,10 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _pickDate() async {
     if (widget.hapticFeedback) HapticFeedback.lightImpact();
-    final DateTime? picked = await showDatePicker(
+    final DateTime? picked = await showDatePicker( 
       context: context,
       initialDate: _selectedDate,
-      firstDate: _firstDate,
+      firstDate: _firstDate, 
       lastDate: DateTime.now(),
       builder: (context, child) {
         return Theme(
@@ -131,7 +130,7 @@ class _HomeScreenState extends State<HomeScreen>
               surface: AppColors.cardDark,
               onSurface: AppColors.starWhite,
             ),
-            dialogBackgroundColor: AppColors.spaceBlue,
+            dialogBackgroundColor: AppColors.spaceBlue, // custom dark theme for the date picker
           ),
           child: child!,
         );
@@ -139,7 +138,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
     if (picked != null && picked != _selectedDate) {
       setState(() => _selectedDate = picked);
-      _loadData(date: picked);
+      _loadData(date: picked); //  load data for the picked date
     }
   }
 
@@ -147,11 +146,11 @@ class _HomeScreenState extends State<HomeScreen>
     if (_apod == null) return;
     if (widget.hapticFeedback) HapticFeedback.lightImpact();
     if (_isFavourited) {
-      await FavouritesService.removeFavourite(_apod!.date);
+      await FavouritesService.removeFavourite(_apod!.date); //  remove from local and cloud storage
     } else {
-      await FavouritesService.saveFavourite(_apod!);
+      await FavouritesService.saveFavourite(_apod!); // save to local and cloud storage
     }
-    setState(() => _isFavourited = !_isFavourited);
+    setState(() => _isFavourited = !_isFavourited); 
   }
 
   @override
@@ -159,14 +158,14 @@ class _HomeScreenState extends State<HomeScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      body: RefreshIndicator(
+      body: RefreshIndicator( //  pull down to refresh gesture
         onRefresh: () => _loadData(),
         color: AppColors.accentGlow,
         backgroundColor: AppColors.spaceBlue,
         child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
+          physics: const AlwaysScrollableScrollPhysics(), //  allows pull to refresh even when content is short
           slivers: [
-            SliverAppBar(
+            SliverAppBar( 
               expandedHeight: 60,
               floating: true,
               snap: true,
@@ -190,7 +189,7 @@ class _HomeScreenState extends State<HomeScreen>
               actions: [
                 IconButton(
                   icon: const Icon(Icons.refresh_rounded, color: Colors.white),
-                  onPressed: () => _loadData(),
+                  onPressed: () => _loadData(), //  refresh button in app bar
                 ),
               ],
             ),
@@ -203,18 +202,18 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildBody(bool isDark) {
+  Widget _buildBody(bool isDark) { // decides which screen to show based on current state
     if (_noConnection) return _buildNoConnection();
     if (_isLoading) return _buildLoading();
     if (_hasError) return _buildError();
     if (_apod == null) return const SizedBox.shrink();
-    return FadeTransition(
+    return FadeTransition( // fade in when content loads successfully
       opacity: _fadeAnimation,
       child: _buildContent(isDark),
     );
   }
 
-  Widget _buildLoading() {
+  Widget _buildLoading() { // loading spinner shown while waiting for NASA API
     return SizedBox(
       height: 600,
       child: Center(
@@ -251,7 +250,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildNoConnection() {
+  Widget _buildNoConnection() { // shown when connectivity_plus detects no internet
     return SizedBox(
       height: 600,
       child: Center(
@@ -277,14 +276,14 @@ class _HomeScreenState extends State<HomeScreen>
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
-            _buildGlowButton('RETRY', () => _loadData()),
+            _buildGlowButton('RETRY', () => _loadData()), // retry button calls _loadData again
           ],
         ),
       ),
     );
   }
 
-  Widget _buildError() {
+  Widget _buildError() { // shown when API call fails or returns null
     return SizedBox(
       height: 600,
       child: Center(
@@ -316,7 +315,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _buildGlowButton(String label, VoidCallback onTap) {
+  Widget _buildGlowButton(String label, VoidCallback onTap) { //  reusable button used in both error screens
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -349,10 +348,10 @@ class _HomeScreenState extends State<HomeScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (_apod!.mediaType == 'image')
+        if (_apod!.mediaType == 'image') //  check if NASA sent image or video
           GestureDetector(
             onTap: () {
-              Navigator.push(
+              Navigator.push( //  tap image to open full screen zoom view
                 context,
                 MaterialPageRoute(
                   builder: (_) => _ZoomImageScreen(
@@ -362,15 +361,15 @@ class _HomeScreenState extends State<HomeScreen>
                 ),
               );
             },
-            child: Hero(
+            child: Hero( 
               tag: 'apod_image_${_apod!.date}',
-              child: Image.network(
-                _apod!.url,
+              child: Image.network( //  Flutter downloads and displays image from NASA URL
+                _apod!.url, //  URL came from NASA's JSON response
                 width: double.infinity,
                 height: 280,
                 fit: BoxFit.cover,
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
+                loadingBuilder: (context, child, progress) { //  spinner while image downloads
+                  if (progress == null) return child; // image finished loading
                   return Container(
                     width: double.infinity,
                     height: 280,
@@ -381,7 +380,7 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                   );
                 },
-                errorBuilder: (_, __, ___) => Container(
+                errorBuilder: (_, __, ___) => Container( // shown if image fails to load
                   width: double.infinity,
                   height: 280,
                   color: AppColors.spaceBlue,
@@ -394,7 +393,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           )
         else
-          Container(
+          Container( //  shown if NASA sent a video instead of image
             width: double.infinity,
             height: 280,
             color: AppColors.spaceBlue,
@@ -421,7 +420,7 @@ class _HomeScreenState extends State<HomeScreen>
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   GestureDetector(
-                    onTap: _canGoPrevious ? _goToPreviousDay : null,
+                    onTap: _canGoPrevious ? _goToPreviousDay : null, 
                     child: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
@@ -432,7 +431,7 @@ class _HomeScreenState extends State<HomeScreen>
                         border: Border.all(
                           color: _canGoPrevious
                               ? AppColors.accent.withOpacity(0.5)
-                              : AppColors.divider.withOpacity(0.3),
+                              : AppColors.divider.withOpacity(0.3), 
                           width: 1,
                         ),
                       ),
@@ -448,7 +447,7 @@ class _HomeScreenState extends State<HomeScreen>
                   Material(
                     color: Colors.transparent,
                     child: InkWell(
-                      onTap: _pickDate,
+                      onTap: _pickDate, //  tap date to open date picker
                       borderRadius: BorderRadius.circular(20),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -467,7 +466,7 @@ class _HomeScreenState extends State<HomeScreen>
                                 size: 14, color: AppColors.accentGlow),
                             const SizedBox(width: 6),
                             Text(
-                              _apod!.date,
+                              _apod!.date, //  shows current date from NASA data
                               style: const TextStyle(
                                 color: AppColors.accentGlow,
                                 fontSize: 13,
@@ -483,7 +482,7 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
                   ),
                   GestureDetector(
-                    onTap: _canGoNext ? _goToNextDay : null,
+                    onTap: _canGoNext ? _goToNextDay : null, //  disabled if at today's date
                     child: Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
@@ -513,7 +512,7 @@ class _HomeScreenState extends State<HomeScreen>
               const SizedBox(height: 12),
 
               Text(
-                _apod!.title,
+                _apod!.title, //  title from NASA JSON
                 style: TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
@@ -526,8 +525,8 @@ class _HomeScreenState extends State<HomeScreen>
               Row(
                 children: [
                   GestureDetector(
-                    onTap: _toggleFavourite,
-                    child: AnimatedContainer(
+                    onTap: _toggleFavourite, //  saves or removes favourite
+                    child: AnimatedContainer( // animates smoothly when heart is tapped
                       duration: const Duration(milliseconds: 200),
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
@@ -546,8 +545,8 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                       child: Icon(
                         _isFavourited
-                            ? Icons.favorite_rounded
-                            : Icons.favorite_outline_rounded,
+                            ? Icons.favorite_rounded //  filled heart if favourited
+                            : Icons.favorite_outline_rounded, // outline if not
                         color: _isFavourited
                             ? AppColors.red
                             : AppColors.moonGrey,
@@ -574,7 +573,7 @@ class _HomeScreenState extends State<HomeScreen>
                   GestureDetector(
                     onTap: () {
                       if (widget.hapticFeedback) HapticFeedback.lightImpact();
-                      Navigator.push(
+                      Navigator.push( 
                         context,
                         PageRouteBuilder(
                           pageBuilder: (_, animation, __) =>
@@ -583,7 +582,7 @@ class _HomeScreenState extends State<HomeScreen>
                               FadeTransition(
                                   opacity: animation, child: child),
                           transitionDuration:
-                              const Duration(milliseconds: 400),
+                              const Duration(milliseconds: 400), 
                         ),
                       );
                     },
@@ -592,7 +591,7 @@ class _HomeScreenState extends State<HomeScreen>
                           horizontal: 20, vertical: 10),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(25),
-                        gradient: const LinearGradient(
+                        gradient: const LinearGradient( 
                           colors: [AppColors.cosmicBlue, AppColors.accent],
                         ),
                         boxShadow: [
@@ -630,7 +629,7 @@ class _HomeScreenState extends State<HomeScreen>
 
               Text(
                 _apod!.explanation.length > 300
-                    ? '${_apod!.explanation.substring(0, 300)}...'
+                    ? '${_apod!.explanation.substring(0, 300)}...' 
                     : _apod!.explanation,
                 style: TextStyle(
                   fontSize: 14,
@@ -641,7 +640,7 @@ class _HomeScreenState extends State<HomeScreen>
               const SizedBox(height: 8),
               GestureDetector(
                 onTap: () {
-                  Navigator.push(
+                  Navigator.push( 
                     context,
                     PageRouteBuilder(
                       pageBuilder: (_, animation, __) =>
@@ -671,7 +670,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 }
 
-class _ZoomImageScreen extends StatelessWidget {
+class _ZoomImageScreen extends StatelessWidget { 
   final String imageUrl;
   final String tag;
 
@@ -686,11 +685,11 @@ class _ZoomImageScreen extends StatelessWidget {
         iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: Center(
-        child: InteractiveViewer(
+        child: InteractiveViewer( 
           panEnabled: true,
           minScale: 1.0,
-          maxScale: 5.0,
-          child: Hero(
+          maxScale: 5.0, 
+          child: Hero( 
             tag: tag,
             child: Image.network(imageUrl),
           ),

@@ -28,8 +28,8 @@ class NasaApiService {
             '$_baseUrl?api_key=$_apiKey&date=${_formatDate(d)}');
         developer.log('Fetching APOD: $uri', name: 'NasaApiService');
 
-        final response =
-            await http.get(uri).timeout(const Duration(seconds: 10));
+        final response = 
+            await http.get(uri).timeout(const Duration(seconds: 10)); // NETWORK HANDLING
         developer.log('Status: ${response.statusCode}', name: 'NasaApiService');
 
         if (response.statusCode == 200) {
